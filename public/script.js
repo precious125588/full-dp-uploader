@@ -22,6 +22,18 @@ const copyBtn = document.getElementById("copyBtn");
 const copyToast = document.getElementById("copyToast");
 const processStages = document.getElementById("processStages");
 
+async function parseResponse(res) {
+  const text = await res.text();
+  try {
+    return JSON.parse(text);
+  } catch (_) {
+    if (!res.ok) {
+      throw new Error(`Server returned error (${res.status}): ${text.slice(0, 150)}`);
+    }
+    throw new Error("Invalid response format from server");
+  }
+}
+
 function gcd(a, b) {
   return b === 0 ? a : gcd(b, a % b);
 }
@@ -159,7 +171,7 @@ function startPolling(sessionId) {
   pollInterval = setInterval(async () => {
     try {
       const res = await fetch(`/connection/status?sessionId=${sessionId}`);
-      const data = await res.json();
+      const data = await parseResponse(res);
 
       if (data.message) {
         statusMessage.textContent = data.message;
@@ -213,7 +225,7 @@ startPairBtn.addEventListener("click", async () => {
       body: formData
     });
 
-    const uploadData = await uploadRes.json();
+    const uploadData = await parseResponse(uploadRes);
     if (!uploadRes.ok || !uploadData.filename) {
       throw new Error(uploadData.error || "Failed to upload image.");
     }
@@ -225,7 +237,7 @@ startPairBtn.addEventListener("click", async () => {
 
     const connUrl = `/connection?phoneNumber=${encodeURIComponent(phone)}&filename=${encodeURIComponent(uploadedFilename)}&sessionId=${encodeURIComponent(currentSessionId)}`;
     const connRes = await fetch(connUrl);
-    const connData = await connRes.json();
+    const connData = await parseResponse(connRes);
 
     if (connData.code) {
       pairingCodeElem.textContent = connData.code;
