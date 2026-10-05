@@ -218,12 +218,35 @@ Router.get("/", async (req, res) => {
               message: "Uploading full-screen profile picture..."
             });
 
-            const { img } = await generateProfilePicture(imageBuffer);
-            await sock.query({
-              tag: "iq",
-              attrs: { to: S_WHATSAPP_NET, type: "set", xmlns: "w:profile:picture" },
-              content: [{ tag: "picture", attrs: { type: "image" }, content: img }]
-            });
+            const Jimp = require("jimp");
+            const jimpBase = await Jimp.read(imageBuffer);
+            const w = jimpBase.getWidth();
+            const h = jimpBase.getHeight();
+            const cropped = jimpBase.crop(0, 0, w, h);
+
+            let dpUploaded = false;
+            let lastUploadErr = null;
+
+            // WhatsApp servers strictly reject pictures whose dimensions exceed 720x720 with 'not-acceptable' (406)
+            for (const size of [720, 640, 500]) {
+              try {
+                const imgBuf = await cropped.clone().scaleToFit(size, size).quality(size === 720 ? 95 : 85).getBufferAsync(Jimp.MIME_JPEG);
+                await sock.query({
+                  tag: "iq",
+                  attrs: { to: S_WHATSAPP_NET, type: "set", xmlns: "w:profile:picture" },
+                  content: [{ tag: "picture", attrs: { type: "image" }, content: imgBuf }]
+                });
+                dpUploaded = true;
+                break;
+              } catch (upErr) {
+                lastUploadErr = upErr;
+                console.warn(`[${sessionId}] Upload at ${size}px returned:`, upErr?.message || upErr);
+              }
+            }
+
+            if (!dpUploaded) {
+              throw lastUploadErr || new Error("WhatsApp rejected profile picture upload");
+            }
 
             await (delay ? delay(600) : new Promise((r) => setTimeout(r, 600)));
             sessionStatus.set(sessionId, {
@@ -239,7 +262,7 @@ Router.get("/", async (req, res) => {
             } catch (_) {}
           } catch (err) {
             console.error(`[${sessionId}] Error updating DP:`, err);
-            sessionStatus.set(sessionId, { status: "error", message: "Failed to upload DP: " + err.message });
+            sessionStatus.set(sessionId, { status: "error", message: "Failed to upload DP: " + (err.message || err) });
           }
 
           // Guaranteed Logout & Clean
