@@ -1,149 +1,143 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Full DP Uploader — WhatsApp Full Screen DP</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Full Screen DP Uploader | MADE BY JUST X</title>
+  <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 </head>
 <body>
-  <div class="ambient-glow"></div>
+  <div class="glow-bg glow-1"></div>
+  <div class="glow-bg glow-2"></div>
 
-  <main class="shell">
+  <main class="container">
     <header class="hero">
-      <div class="badge">
-        <span class="live-dot"></span>
-        <span>WhatsApp DP Engine</span>
-      </div>
-      <h1>Full <span class="accent-text">DP Uploader</span></h1>
-      <p class="tagline">Upload edge-to-edge full-screen WhatsApp profile pictures without cropping.</p>
+      <div class="badge">MADE BY JUST X</div>
+      <h1>Full Screen DP</h1>
+      <p class="subtitle">Upload high-res profile pictures to WhatsApp without any cropping or blur edges.</p>
     </header>
 
-    <div class="panel">
-      <form id="uploadForm">
-        <div class="field-group">
-          <label class="label">1. Select Profile Picture</label>
-          <div id="dropZone" class="dropzone">
-            <input type="file" id="imageInput" accept="image/*" hidden />
-            <div id="dropHint" class="drop-hint">
-              <div class="icon-wrap">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="3" y="3" width="18" height="18" rx="4" ry="4"/>
-                  <circle cx="8.5" cy="8.5" r="1.5"/>
-                  <polyline points="21 15 16 10 5 21"/>
-                </svg>
-              </div>
-              <p><strong>Click to choose image</strong> or drag and drop</p>
-              <span class="subtext">JPG, PNG, or WEBP (vertical works best)</span>
-            </div>
-            <div id="preview" class="preview hidden"></div>
-          </div>
-        </div>
-
-        <div class="field-group">
-          <label class="label" for="numberInput">2. WhatsApp Number</label>
-          <div class="input-wrap">
-            <input 
-              type="tel" 
-              id="numberInput" 
-              placeholder="+234 906 855 1055" 
-              autocomplete="tel" 
-              required
-            />
-          </div>
-          <span class="hint-text">With country code (e.g. +234... or 234...)</span>
-        </div>
-
-        <button type="submit" id="submitBtn" class="cta-btn">
-          <span class="btn-glow"></span>
-          <span id="ctaText" class="btn-text">Generate Pairing Code</span>
-        </button>
-      </form>
-
-      <!-- Pairing Code Card -->
-      <div id="pairingBox" class="pairing-box hidden">
-        <div class="pair-header">
-          <span class="pair-tag">PAIRING CODE</span>
-          <span class="pair-timer">Ready to link</span>
-        </div>
-        <div class="code-container">
-          <div id="pairingCode" class="code-display">---- - ----</div>
-          <button type="button" id="copyBtn" class="copy-btn" title="Copy code">
-            <svg class="copy-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
-              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+    <div class="main-card">
+      <!-- Upload Zone -->
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="imageInput" accept="image/*" class="file-input">
+        <div class="upload-content">
+          <div class="upload-icon">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
             </svg>
-            <span id="copyText">Copy</span>
-          </button>
-        </div>
-        <p class="pair-note">
-          Open <strong>WhatsApp</strong> &rarr; <strong>Linked Devices</strong> &rarr; <strong>Link a Device</strong> &rarr; <strong>Link with phone number instead</strong> &rarr; enter code.
-        </p>
-      </div>
-
-      <!-- Live Animated Progress Monitor -->
-      <div id="monitor" class="monitor-box hidden">
-        <div class="mon-header">
-          <div class="pulse-indicator">
-            <span class="beacon"></span>
-            <span class="beacon-core"></span>
           </div>
-          <span class="mon-title">Live Process Monitor</span>
-        </div>
-
-        <!-- Animated Progress Steps -->
-        <div class="pipeline" id="pipeline">
-          <div class="pipeline-bar">
-            <div id="pipelineFill" class="pipeline-fill" style="width: 12%;"></div>
-          </div>
-          <div class="stages">
-            <div class="stage" data-step="1">
-              <div class="stage-dot"><span class="inner"></span></div>
-              <span class="stage-name">Connecting</span>
-            </div>
-            <div class="stage" data-step="2">
-              <div class="stage-dot"><span class="inner"></span></div>
-              <span class="stage-name">Pair Code</span>
-            </div>
-            <div class="stage" data-step="3">
-              <div class="stage-dot"><span class="inner"></span></div>
-              <span class="stage-name">Linked</span>
-            </div>
-            <div class="stage" data-step="4">
-              <div class="stage-dot"><span class="inner"></span></div>
-              <span class="stage-name">Upload DP</span>
-            </div>
-            <div class="stage" data-step="5">
-              <div class="stage-dot"><span class="inner"></span></div>
-              <span class="stage-name">DP Done</span>
-            </div>
-            <div class="stage" data-step="6">
-              <div class="stage-dot"><span class="inner"></span></div>
-              <span class="stage-name">Logout</span>
-            </div>
-            <div class="stage" data-step="7">
-              <div class="stage-dot"><span class="inner"></span></div>
-              <span class="stage-name">Cleared</span>
-            </div>
-          </div>
-        </div>
-
-        <div id="statusMsg" class="status-msg">
-          <span class="status-spinner"></span>
-          <span id="statusMsgText">Starting session...</span>
+          <h3>Select Profile Picture</h3>
+          <p class="upload-hint">Drag & drop or click to browse</p>
+          <span class="file-types">Supports JPG, PNG, WEBP</span>
         </div>
       </div>
 
-      <div id="result" class="result"></div>
+      <!-- Preview Container with Image Details -->
+      <div class="preview-container hidden" id="previewContainer">
+        <div class="preview-card">
+          <img id="imagePreview" src="" alt="DP Preview">
+          <div class="image-meta" id="imageMeta">
+            <div class="meta-item">
+              <span class="meta-label">Resolution</span>
+              <span class="meta-val" id="metaRes">--</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">File Size</span>
+              <span class="meta-val" id="metaSize">--</span>
+            </div>
+            <div class="meta-item">
+              <span class="meta-label">Aspect Ratio</span>
+              <span class="meta-val" id="metaRatio">--</span>
+            </div>
+          </div>
+          <button type="button" class="btn-secondary" id="changeImageBtn">Change Image</button>
+        </div>
+      </div>
+
+      <!-- Phone Number Input -->
+      <div class="input-group">
+        <label for="phoneNumber">WhatsApp Phone Number</label>
+        <div class="phone-input-wrapper">
+          <input type="tel" id="phoneNumber" placeholder="e.g. 2349068551055 or +234..." autocomplete="tel">
+        </div>
+        <p class="input-hint">Include country code. WhatsApp will push a pairing notification to your phone.</p>
+      </div>
+
+      <!-- Action Button -->
+      <button type="button" class="btn-primary" id="startPairBtn" disabled>
+        <span>Generate Pairing Code</span>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <polyline points="12 5 19 12 12 19"></polyline>
+        </svg>
+      </button>
+
+      <!-- Live Process Stages -->
+      <div class="process-stages hidden" id="processStages">
+        <div class="stage" id="stage-connect">
+          <div class="stage-dot"></div>
+          <span>Connect</span>
+        </div>
+        <div class="stage-line"></div>
+        <div class="stage" id="stage-link">
+          <div class="stage-dot"></div>
+          <span>Link</span>
+        </div>
+        <div class="stage-line"></div>
+        <div class="stage" id="stage-dp">
+          <div class="stage-dot"></div>
+          <span>Set DP</span>
+        </div>
+        <div class="stage-line"></div>
+        <div class="stage" id="stage-logout">
+          <div class="stage-dot"></div>
+          <span>Logout</span>
+        </div>
+        <div class="stage-line"></div>
+        <div class="stage" id="stage-clean">
+          <div class="stage-dot"></div>
+          <span>Clean</span>
+        </div>
+      </div>
+
+      <!-- Status Card -->
+      <div class="status-card hidden" id="statusCard">
+        <div class="status-header">
+          <div class="pulse-indicator"></div>
+          <span class="status-step" id="statusStep">LIVE MONITOR</span>
+        </div>
+        <p class="status-msg" id="statusMessage">Waiting for input...</p>
+
+        <!-- Pairing Code Box -->
+        <div class="code-box hidden" id="codeBox">
+          <div class="code-title">YOUR PAIRING CODE</div>
+          <div class="code-display-row">
+            <span class="code-text" id="pairingCode">----</span>
+            <button type="button" class="copy-btn" id="copyBtn" title="Copy code">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span>Copy</span>
+            </button>
+          </div>
+          <p class="code-instructions">Tap the WhatsApp notification on your phone or go to <strong>Linked Devices > Link with phone number</strong>.</p>
+        </div>
+      </div>
     </div>
 
     <footer class="footer">
-      <p>Made by <strong>JUST X</strong></p>
+      <p>Made with ❤️ by <strong>JUST X</strong> &bull; End-to-end encrypted session cleanup</p>
     </footer>
   </main>
+
+  <div class="toast" id="copyToast">Copied to clipboard!</div>
 
   <script src="script.js"></script>
 </body>

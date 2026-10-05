@@ -6,7 +6,6 @@ const fs = require("fs");
 const path = require("path");
 const generateProfilePicture = require("../utils/functions");
 
-// Baileys is loaded dynamically to support @whiskeysockets/baileys (@itsliaaa/baileys)
 let makeWASocket, useMultiFileAuthState, DisconnectReason, delay, S_WHATSAPP_NET, fetchLatestBaileysVersion;
 
 const loadBaileys = async () => {
@@ -20,7 +19,6 @@ const loadBaileys = async () => {
   fetchLatestBaileysVersion = B.fetchLatestBaileysVersion;
 };
 
-// Fast/cached WhatsApp client version matching Mais-project-
 const FALLBACK_WA_VERSION = [2, 3000, 1015901307];
 let _waVersionCache = { version: null, at: 0 };
 const WA_VERSION_TTL = 6 * 60 * 60 * 1000;
@@ -33,7 +31,7 @@ async function getWAVersion() {
     if (fetchLatestBaileysVersion) {
       const result = await Promise.race([
         fetchLatestBaileysVersion(),
-        new Promise((_, rej) => setTimeout(() => rej(new Error("version lookup timeout")), 3500))
+        new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 3500))
       ]);
       if (result?.version) {
         _waVersionCache = { version: result.version, at: Date.now() };
@@ -41,12 +39,11 @@ async function getWAVersion() {
       }
     }
   } catch (err) {
-    console.log(`[WA] Version fetch error (${err.message}) — using fallback version`);
+    console.log(`[WA] Version fetch error (${err.message}) — using fallback`);
   }
   return _waVersionCache.version || FALLBACK_WA_VERSION;
 }
 
-// In-memory status tracker for live monitoring
 const sessionStatus = new Map();
 
 Router.get("/status", (req, res) => {
@@ -57,7 +54,6 @@ Router.get("/status", (req, res) => {
   return res.status(200).json(sessionStatus.get(sessionId));
 });
 
-// Wait for socket to be genuinely open before requesting code (exact logic from Mais-project-)
 function waitForSocketOpen(sock, timeoutMs = 20000) {
   return new Promise((resolve) => {
     let timer;
@@ -89,7 +85,6 @@ function waitForSocketOpen(sock, timeoutMs = 20000) {
 function sanitizeNumber(input) {
   if (!input) return "";
   let digits = String(input).replace(/[^0-9]/g, "");
-  // Support Nigerian local 080..., 090... -> 23480..., 23490...
   if (digits.startsWith("0") && digits.length === 11) {
     digits = "234" + digits.substring(1);
   }
@@ -100,24 +95,24 @@ function cleanupSession(sessionId, sessionDir, imagePath) {
   try {
     if (sessionDir && fs.existsSync(sessionDir)) {
       fs.rmSync(sessionDir, { recursive: true, force: true });
-      console.log(`[${sessionId}] Cleaned session files`);
-    }
-    if (imagePath && fs.existsSync(imagePath)) {
-      fs.unlinkSync(imagePath);
-      console.log(`[${sessionId}] Cleaned image upload`);
+      console.log(`[${sessionId}] Cleaned session directory`);
     }
   } catch (err) {
-    console.error(`[${sessionId}] Cleanup error:`, err.message);
+    console.error(`[${sessionId}] Error deleting session files:`, err.message);
+  }
+  try {
+    if (imagePath && fs.existsSync(imagePath)) {
+      fs.unlinkSync(imagePath);
+      console.log(`[${sessionId}] Cleaned uploaded image file`);
+    }
+  } catch (err) {
+    console.error(`[${sessionId}] Error deleting uploaded image:`, err.message);
   }
 }
 
 Router.get("/", async (req, res) => {
-  if (!req.query.filename) {
-    return res.status(400).json({ error: "Filename is required" });
-  }
-  if (!req.query.phoneNumber) {
-    return res.status(400).json({ error: "Phone number is required" });
-  }
+  if (!req.query.filename) return res.status(400).json({ error: "Filename is required" });
+  if (!req.query.phoneNumber) return res.status(400).json({ error: "Phone number is required" });
 
   const rawNumber = sanitizeNumber(req.query.phoneNumber);
   if (!rawNumber || rawNumber.length < 9) {
@@ -132,7 +127,6 @@ Router.get("/", async (req, res) => {
   const sessionId = req.query.sessionId || Date.now().toString(36);
   const sessionDir = path.join(__dirname, "../sessions", sessionId);
 
-  // Clean start for fresh pairing keys
   if (fs.existsSync(sessionDir)) fs.rmSync(sessionDir, { recursive: true, force: true });
   fs.mkdirSync(sessionDir, { recursive: true });
 
@@ -147,10 +141,7 @@ Router.get("/", async (req, res) => {
     const version = await getWAVersion();
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
 
-    let activeSock = null;
-
     const startSocket = async (isRestart = false) => {
-      // Re-load state if restarting to get latest creds
       const authState = isRestart ? (await useMultiFileAuthState(sessionDir)).state : state;
       const credsSaver = isRestart ? (await useMultiFileAuthState(sessionDir)).saveCreds : saveCreds;
 
@@ -159,7 +150,6 @@ Router.get("/", async (req, res) => {
         printQRInTerminal: false,
         auth: authState,
         version,
-        // Proven browser identity from Mais-project-
         browser: ["Mac OS", "Chrome", "121.0.6167.85"],
         shouldSyncHistoryMessage: () => false,
         connectTimeoutMs: 60000,
@@ -171,8 +161,6 @@ Router.get("/", async (req, res) => {
         syncFullHistory: false,
         markOnlineOnConnect: false
       });
-
-      activeSock = sock;
 
       const safeSaveCreds = async () => {
         try {
@@ -197,8 +185,7 @@ Router.get("/", async (req, res) => {
             });
             cleanupSession(sessionId, sessionDir, imagePath);
           } else if (statusCode === DisconnectReason.restartRequired) {
-            // Reason 515 restartRequired occurs right after pairing code handshake!
-            console.log(`[${sessionId}] Restart required (code 515) — reconnecting with confirmed session...`);
+            console.log(`[${sessionId}] Restart required (code 515) — reconnecting...`);
             sessionStatus.set(sessionId, {
               status: "restarting",
               step: 2,
@@ -231,7 +218,6 @@ Router.get("/", async (req, res) => {
               message: "Uploading full-screen profile picture..."
             });
 
-            // Uses original Jimp logic with getWidth, getHeight, crop, scaleToFit, normalize
             const { img } = await generateProfilePicture(imageBuffer);
             await sock.query({
               tag: "iq",
@@ -253,26 +239,35 @@ Router.get("/", async (req, res) => {
             } catch (_) {}
           } catch (err) {
             console.error(`[${sessionId}] Error updating DP:`, err);
-            sessionStatus.set(sessionId, {
-              status: "error",
-              message: "Failed to upload DP: " + err.message
-            });
+            sessionStatus.set(sessionId, { status: "error", message: "Failed to upload DP: " + err.message });
           }
 
-          await (delay ? delay(1200) : new Promise((r) => setTimeout(r, 1200)));
+          // Guaranteed Logout & Clean
+          await (delay ? delay(1000) : new Promise((r) => setTimeout(r, 1000)));
           sessionStatus.set(sessionId, {
             status: "logging_out",
             step: 6,
-            message: "Done logging out from WhatsApp..."
+            message: "Logging out from WhatsApp..."
           });
 
-          try { await sock.logout(); } catch (_) {}
+          try {
+            await Promise.race([
+              sock.logout("Full DP update complete"),
+              new Promise((_, reject) => setTimeout(() => reject(new Error("logout timeout")), 4000))
+            ]);
+          } catch (logoutErr) {
+            console.log(`[${sessionId}] Logout notice:`, logoutErr.message);
+          } finally {
+            try { sock.ws?.close(); } catch (_) {}
+            try { sock.end?.(); } catch (_) {}
+          }
 
           sessionStatus.set(sessionId, {
             status: "clearing",
             step: 7,
             message: "All work cleared! Session & uploads deleted."
           });
+
           cleanupSession(sessionId, sessionDir, imagePath);
 
           sessionStatus.set(sessionId, {
@@ -288,7 +283,6 @@ Router.get("/", async (req, res) => {
 
     const initialSock = await startSocket(false);
 
-    // Wait for the websocket to genuinely open (matching Mais-project-)
     const isReady = await waitForSocketOpen(initialSock, 20000);
     if (!isReady) {
       sessionStatus.set(sessionId, { status: "error", message: "Connection to WhatsApp timed out. Please retry." });
@@ -300,7 +294,6 @@ Router.get("/", async (req, res) => {
 
     await (delay ? delay(500) : new Promise((r) => setTimeout(r, 500)));
 
-    // Request pairing code with retry loop matching Mais-project-
     const MAX_CODE_ATTEMPTS = 4;
     let pairingCode = null;
     let lastError = null;
@@ -331,9 +324,7 @@ Router.get("/", async (req, res) => {
         ? `WhatsApp did not issue a pairing code (${lastError.message}). Please try again.`
         : "WhatsApp did not return a pairing code";
       sessionStatus.set(sessionId, { status: "error", message: errMsg });
-      if (!res.headersSent) {
-        return res.status(500).json({ error: errMsg });
-      }
+      if (!res.headersSent) return res.status(500).json({ error: errMsg });
       return;
     }
 
