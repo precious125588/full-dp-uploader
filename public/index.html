@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Full DP Uploader — WhatsApp Full Screen Profile Picture</title>
+<link rel="stylesheet" href="style.css" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+</head>
+<body>
+
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+
+<main class="shell">
+
+  <header class="hero">
+    <div class="logo-badge">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none">
+        <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 5C13.66 5 15 6.34 15 8C15 9.66 13.66 11 12 11C10.34 11 9 9.66 9 8C9 6.34 10.34 5 12 5ZM12 19.2C9.5 19.2 7.29 17.92 6 15.98C6.03 14.02 10 12.94 12 12.94C13.99 12.94 17.97 14.02 18 15.98C16.71 17.92 14.5 19.2 12 19.2Z" fill="currentColor"/>
+      </svg>
+    </div>
+    <h1>Full <span class="grad">DP Uploader</span></h1>
+    <p class="tagline">Set a full-screen WhatsApp profile picture. No crop. No blur. Just upload, pair, done.</p>
+  </header>
+
+  <section class="card">
+
+    <button type="button" class="info-chip" onclick="openModal()">ℹ️ How it works</button>
+
+    <form id="uploadForm">
+      <label class="field-label">1 · Your photo</label>
+      <div id="dropZone" class="dropzone">
+        <input type="file" id="imageInput" accept="image/*" hidden />
+        <div id="dropHint" class="drop-hint">
+          <div class="dz-icon">📸</div>
+          <p><strong>Click to choose</strong> or drag & drop</p>
+          <span>Vertical image (9:16) works best</span>
+        </div>
+        <div id="preview" class="preview hidden"></div>
+      </div>
+
+      <label class="field-label" for="numberInput">2 · WhatsApp number</label>
+      <div class="phone-row">
+        <span class="phone-prefix">＋</span>
+        <input type="tel" id="numberInput" placeholder="e.g. 2349068551055" autocomplete="tel" inputmode="numeric" />
+      </div>
+
+      <button type="submit" id="submitBtn" class="cta">
+        <span id="ctaText">🚀 Set My Full Screen DP</span>
+      </button>
+    </form>
+
+    <div id="pairingBox" class="pairing hidden">
+      <p class="pb-title">Pairing code</p>
+      <div id="pairingCode" class="pairing-code"></div>
+      <p class="pb-hint">On your phone: <strong>WhatsApp → Settings → Linked Devices → Link a Device → <u>Link with phone number instead</u></strong> — then type the code above.</p>
+    </div>
+
+    <div id="monitor" class="monitor hidden">
+      <p class="mon-title">Live status</p>
+      <ol class="steps" id="steps">
+        <li data-step="1"><span class="dot"></span>Connecting to WhatsApp</li>
+        <li data-step="2"><span class="dot"></span>Pairing code generated</li>
+        <li data-step="3"><span class="dot"></span>WhatsApp linked ✅</li>
+        <li data-step="4"><span class="dot"></span>Uploading DP to WhatsApp</li>
+        <li data-step="5"><span class="dot"></span>Done — DP updated</li>
+        <li data-step="6"><span class="dot"></span>Logging out</li>
+        <li data-step="7"><span class="dot"></span>Clearing session &amp; uploads</li>
+        <li data-step="8"><span class="dot"></span>All work cleared</li>
+      </ol>
+      <div id="statusMsg" class="status-msg">Waiting…</div>
+    </div>
+
+    <div id="result" class="result"></div>
+  </section>
+
+  <footer>Crafted with ❤️ by <strong>Amruth</strong> ✨ · v1.1</footer>
+</main>
+
+<div id="infoModal" class="modal hidden">
+  <div class="modal-box">
+    <h2>📌 Before you start</h2>
+    <ul>
+      <li>Enter your WhatsApp number with country code, <strong>without</strong> “+” (e.g. <strong>2349068551055</strong>)</li>
+      <li>The pairing notification pops up on your phone — if it doesn't, open <strong>Linked Devices → Link with phone number instead</strong> and enter the code there</li>
+      <li>Use a vertical image (9:16) for the best edge-to-edge result</li>
+      <li>Nothing is stored — the session and your image are wiped automatically after upload</li>
+    </ul>
+    <button onclick="closeModal()" class="cta small">Got it!</button>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
