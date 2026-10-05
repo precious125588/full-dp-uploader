@@ -1,12 +1,14 @@
 {
   "name": "full-dp-uploader",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "WhatsApp Full Screen DP Uploader with live pairing monitor and pairing-code notifications",
   "main": "index.js",
-  "scripts": { "start": "node index.js" },
+  "scripts": {
+    "start": "node index.js"
+  },
   "dependencies": {
     "@hapi/boom": "^10.0.1",
-    "baileys": "^6.7.18",
+    "baileys": "6.7.18",
     "express": "^5.1.0",
     "jimp": "^0.16.13",
     "multer": "^2.0.2",
