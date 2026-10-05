@@ -7,24 +7,15 @@ async function clearDir() {
     try {
         const uploads = path.join(__dirname, '../uploads');
         const session = path.join(__dirname, '../session');
-
-        if (fs.existsSync(uploads)) {
-            fs.rmSync(uploads, { recursive: true, force: true });
-            console.log('Uploads directory deleted.');
-        }
-
-        if (fs.existsSync(session)) {
-            fs.rmSync(session, { recursive: true, force: true });
-            console.log('Session directory deleted.');
-        }
-
-        if (!fs.existsSync(uploads)) {
-            fs.mkdirSync(uploads, { recursive: true });
-            console.log("Created 'uploads' folder ✅");
-        }
-        if (!fs.existsSync(session)) {
-            fs.mkdirSync(session, { recursive: true });
-            console.log("Created 'session' folder ✅");
+        const sessions = path.join(__dirname, '../sessions');
+        for (const dir of [uploads, session, sessions]) {
+            if (fs.existsSync(dir)) {
+                fs.rmSync(dir, { recursive: true, force: true });
+                console.log(`Deleted ${path.basename(dir)} directory.`);
+            }
+            if (!fs.existsSync(dir)) {
+                if (path.basename(dir) !== 'sessions') fs.mkdirSync(dir, { recursive: true });
+            }
         }
     } catch (error) {
         console.error('Error while clearing directories:', error);
