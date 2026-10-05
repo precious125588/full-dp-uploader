@@ -15,13 +15,10 @@ if (!fs.existsSync(uploadsDir)) {
 app.use('/', express.static(path.join(__dirname, "public")));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
 app.use('/connect', connection);
 app.use('/upload', uploader);
 app.use('/uploads', express.static(path.join(__dirname, "uploads")));
 app.use('/clear', clear);
 
 const PORT = process.env.PORT || 8000;
-app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`Server is running on port ${PORT}`));
