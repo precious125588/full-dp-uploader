@@ -1,10 +1,3 @@
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  delay,
-  S_WHATSAPP_NET
-} = require("baileys");
 const pino = require("pino");
 const { Boom } = require("@hapi/boom");
 const express = require("express");
@@ -12,6 +5,46 @@ const Router = express.Router();
 const fs = require("fs");
 const path = require("path");
 const generateProfilePicture = require("../utils/functions");
+
+// Baileys is loaded dynamically to support @whiskeysockets/baileys (@itsliaaa/baileys)
+let makeWASocket, useMultiFileAuthState, DisconnectReason, delay, S_WHATSAPP_NET, fetchLatestBaileysVersion;
+
+const loadBaileys = async () => {
+  if (makeWASocket) return;
+  const B = await import("@whiskeysockets/baileys");
+  makeWASocket = B.default || B.makeWASocket;
+  useMultiFileAuthState = B.useMultiFileAuthState;
+  DisconnectReason = B.DisconnectReason;
+  delay = B.delay || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  S_WHATSAPP_NET = B.S_WHATSAPP_NET || "s.whatsapp.net";
+  fetchLatestBaileysVersion = B.fetchLatestBaileysVersion;
+};
+
+// Fast/cached WhatsApp client version matching Mais-project-
+const FALLBACK_WA_VERSION = [2, 3000, 1015901307];
+let _waVersionCache = { version: null, at: 0 };
+const WA_VERSION_TTL = 6 * 60 * 60 * 1000;
+
+async function getWAVersion() {
+  if (_waVersionCache.version && Date.now() - _waVersionCache.at < WA_VERSION_TTL) {
+    return _waVersionCache.version;
+  }
+  try {
+    if (fetchLatestBaileysVersion) {
+      const result = await Promise.race([
+        fetchLatestBaileysVersion(),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("version lookup timeout")), 3500))
+      ]);
+      if (result?.version) {
+        _waVersionCache = { version: result.version, at: Date.now() };
+        return result.version;
+      }
+    }
+  } catch (err) {
+    console.log(`[WA] Version fetch error (${err.message}) — using fallback version`);
+  }
+  return _waVersionCache.version || FALLBACK_WA_VERSION;
+}
 
 // In-memory status tracker for live monitoring
 const sessionStatus = new Map();
@@ -24,8 +57,8 @@ Router.get("/status", (req, res) => {
   return res.status(200).json(sessionStatus.get(sessionId));
 });
 
-// Helper from Mais-project: wait for the socket connection to be fully ready
-function waitForSocketOpen(sock, timeoutMs = 25000) {
+// Wait for socket to be genuinely open before requesting code (exact logic from Mais-project-)
+function waitForSocketOpen(sock, timeoutMs = 20000) {
   return new Promise((resolve) => {
     let timer;
     const cleanup = (ok) => {
@@ -110,26 +143,41 @@ Router.get("/", async (req, res) => {
   });
 
   try {
+    await loadBaileys();
+    const version = await getWAVersion();
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
 
+    let activeSock = null;
+
     const startSocket = async (isRestart = false) => {
+      // Re-load state if restarting to get latest creds
+      const authState = isRestart ? (await useMultiFileAuthState(sessionDir)).state : state;
+      const credsSaver = isRestart ? (await useMultiFileAuthState(sessionDir)).saveCreds : saveCreds;
+
       const sock = makeWASocket({
         logger: pino({ level: "silent" }),
         printQRInTerminal: false,
-        auth: state,
-        // Proven browser identity from Mais-project that WhatsApp reliably accepts for pairing codes
+        auth: authState,
+        version,
+        // Proven browser identity from Mais-project-
         browser: ["Mac OS", "Chrome", "121.0.6167.85"],
-        syncFullHistory: false,
+        shouldSyncHistoryMessage: () => false,
         connectTimeoutMs: 60000,
-        defaultQueryTimeoutMs: 60000,
+        defaultQueryTimeoutMs: 30000,
+        keepAliveIntervalMs: 45000,
         emitOwnEvents: true,
+        fireInitQueries: true,
+        generateHighQualityLinkPreview: false,
+        syncFullHistory: false,
         markOnlineOnConnect: false
       });
+
+      activeSock = sock;
 
       const safeSaveCreds = async () => {
         try {
           if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
-          await saveCreds();
+          await credsSaver();
         } catch (_) {}
       };
       sock.ev.on("creds.update", safeSaveCreds);
@@ -149,14 +197,14 @@ Router.get("/", async (req, res) => {
             });
             cleanupSession(sessionId, sessionDir, imagePath);
           } else if (statusCode === DisconnectReason.restartRequired) {
-            // CRITICAL FIX: WhatsApp pairing code linking requires restart on code 515!
-            console.log(`[${sessionId}] Restart required after phone confirmation — reconnecting...`);
+            // Reason 515 restartRequired occurs right after pairing code handshake!
+            console.log(`[${sessionId}] Restart required (code 515) — reconnecting with confirmed session...`);
             sessionStatus.set(sessionId, {
               status: "restarting",
               step: 2,
               message: "Device recognized! Completing link handshake..."
             });
-            await delay(1500);
+            await (delay ? delay(1500) : new Promise((r) => setTimeout(r, 1500)));
             startSocket(true);
           }
         } else if (connection === "open") {
@@ -167,7 +215,7 @@ Router.get("/", async (req, res) => {
             message: "WhatsApp linked! Generating full-screen DP..."
           });
 
-          await delay(600);
+          await (delay ? delay(600) : new Promise((r) => setTimeout(r, 600)));
 
           if (!fs.existsSync(imagePath)) {
             sessionStatus.set(sessionId, { status: "error", message: "Image not found for DP upload" });
@@ -191,7 +239,7 @@ Router.get("/", async (req, res) => {
               content: [{ tag: "picture", attrs: { type: "image" }, content: img }]
             });
 
-            await delay(600);
+            await (delay ? delay(600) : new Promise((r) => setTimeout(r, 600)));
             sessionStatus.set(sessionId, {
               status: "dp_done",
               step: 5,
@@ -211,7 +259,7 @@ Router.get("/", async (req, res) => {
             });
           }
 
-          await delay(1200);
+          await (delay ? delay(1200) : new Promise((r) => setTimeout(r, 1200)));
           sessionStatus.set(sessionId, {
             status: "logging_out",
             step: 6,
@@ -240,7 +288,7 @@ Router.get("/", async (req, res) => {
 
     const initialSock = await startSocket(false);
 
-    // Wait for the websocket to actually open before requesting pairing code (like Mais-project)
+    // Wait for the websocket to genuinely open (matching Mais-project-)
     const isReady = await waitForSocketOpen(initialSock, 20000);
     if (!isReady) {
       sessionStatus.set(sessionId, { status: "error", message: "Connection to WhatsApp timed out. Please retry." });
@@ -250,12 +298,14 @@ Router.get("/", async (req, res) => {
       return;
     }
 
-    await delay(500);
+    await (delay ? delay(500) : new Promise((r) => setTimeout(r, 500)));
 
-    // Request pairing code with retry logic (up to 3 attempts)
+    // Request pairing code with retry loop matching Mais-project-
+    const MAX_CODE_ATTEMPTS = 4;
     let pairingCode = null;
     let lastError = null;
-    for (let attempt = 1; attempt <= 3; attempt++) {
+
+    for (let attempt = 1; attempt <= MAX_CODE_ATTEMPTS; attempt++) {
       try {
         sessionStatus.set(sessionId, {
           status: "requesting_code",
@@ -263,20 +313,23 @@ Router.get("/", async (req, res) => {
           message: `Requesting pairing code (attempt ${attempt})...`
         });
 
-        pairingCode = await initialSock.requestPairingCode(rawNumber);
-        if (pairingCode) {
-          pairingCode = pairingCode.match(/.{1,4}/g)?.join("-") || pairingCode;
+        let code = await initialSock.requestPairingCode(rawNumber);
+        if (code) {
+          pairingCode = code?.match(/.{1,4}/g)?.join("-") || code;
           break;
         }
       } catch (err) {
         lastError = err;
-        console.warn(`[${sessionId}] Pairing code attempt ${attempt} failed:`, err.message);
-        await delay(1500);
+        console.warn(`[${sessionId}] Pair request attempt ${attempt} for ${rawNumber}: ${err.message}`);
+        const retryDelay = Math.min(1500 * (2 ** Math.min(attempt - 1, 3)), 6000);
+        await new Promise((r) => setTimeout(r, retryDelay));
       }
     }
 
     if (!pairingCode) {
-      const errMsg = lastError?.message || "WhatsApp did not return a pairing code";
+      const errMsg = lastError?.message
+        ? `WhatsApp did not issue a pairing code (${lastError.message}). Please try again.`
+        : "WhatsApp did not return a pairing code";
       sessionStatus.set(sessionId, { status: "error", message: errMsg });
       if (!res.headersSent) {
         return res.status(500).json({ error: errMsg });
@@ -290,7 +343,7 @@ Router.get("/", async (req, res) => {
       status: "waiting_link",
       step: 2,
       code: pairingCode,
-      message: "Pairing code ready! Enter this code in WhatsApp > Linked Devices."
+      message: "Pairing code ready! Check WhatsApp notification on your phone or enter in Linked Devices."
     });
 
     if (!res.headersSent) {
