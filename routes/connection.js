@@ -218,19 +218,13 @@ Router.get("/", async (req, res) => {
               message: "Uploading full-screen profile picture..."
             });
 
-            const Jimp = require("jimp");
-            const jimpBase = await Jimp.read(imageBuffer);
-            const w = jimpBase.getWidth();
-            const h = jimpBase.getHeight();
-            const cropped = jimpBase.crop(0, 0, w, h);
-
             let dpUploaded = false;
             let lastUploadErr = null;
 
-            // WhatsApp servers strictly reject pictures whose dimensions exceed 720x720 with 'not-acceptable' (406)
+            // Levanter Sharp pipeline (fit: inside, chromaSubsampling 4:4:4, quality 100)
             for (const size of [720, 640, 500]) {
               try {
-                const imgBuf = await cropped.clone().scaleToFit(size, size).quality(size === 720 ? 95 : 85).getBufferAsync(Jimp.MIME_JPEG);
+                const { img: imgBuf } = await generateProfilePicture(imageBuffer, size, size, 100);
                 await sock.query({
                   tag: "iq",
                   attrs: { to: S_WHATSAPP_NET, type: "set", xmlns: "w:profile:picture" },
@@ -240,7 +234,7 @@ Router.get("/", async (req, res) => {
                 break;
               } catch (upErr) {
                 lastUploadErr = upErr;
-                console.warn(`[${sessionId}] Upload at ${size}px returned:`, upErr?.message || upErr);
+                console.warn("[" + sessionId + "] Upload at " + size + "px with sharp returned:", upErr?.message || upErr);
               }
             }
 
