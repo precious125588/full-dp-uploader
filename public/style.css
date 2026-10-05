@@ -1,0 +1,59 @@
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0f0d;--card:rgba(255,255,255,.045);--line:rgba(255,255,255,.09);--txt:#e8f5ee;--dim:#8fa89a;--green:#25d366;--green-2:#128c7e;--cyan:#22d3ee;--red:#f87171}
+body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;overflow-x:hidden}
+.bg-orbs{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.orb{position:absolute;border-radius:50%;filter:blur(90px);opacity:.35}
+.orb-1{width:420px;height:420px;background:#128c7e;top:-120px;left:-120px;animation:float 14s ease-in-out infinite}
+.orb-2{width:360px;height:360px;background:#0e7490;bottom:-100px;right:-80px;animation:float 18s ease-in-out infinite reverse}
+.orb-3{width:260px;height:260px;background:#166534;top:40%;left:60%;animation:float 22s ease-in-out infinite}
+@keyframes float{0%,100%{transform:translate(0,0) scale(1)}50%{transform:translate(30px,-40px) scale(1.08)}}
+.shell{position:relative;z-index:1;max-width:520px;margin:0 auto;padding:48px 20px 40px;display:flex;flex-direction:column;align-items:center;gap:28px}
+.hero{text-align:center}
+.logo-badge{display:inline-flex;align-items:center;justify-content:center;width:58px;height:58px;border-radius:18px;background:linear-gradient(135deg,var(--green),var(--green-2));box-shadow:0 8px 32px rgba(37,211,102,.35);margin-bottom:14px;color:#04170e}
+.hero h1{font-size:clamp(1.9rem,6vw,2.5rem);font-weight:800;letter-spacing:-.02em}
+.grad{background:linear-gradient(90deg,var(--green),var(--cyan));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.tagline{color:var(--dim);font-size:.95rem;margin-top:8px;max-width:38ch;margin-inline:auto}
+.card{width:100%;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:26px 22px;backdrop-filter:blur(18px);box-shadow:0 24px 60px rgba(0,0,0,.45)}
+.info-chip{align-self:flex-end;display:block;margin-left:auto;background:rgba(255,255,255,.06);border:1px solid var(--line);color:var(--dim);border-radius:999px;padding:5px 14px;font-size:.78rem;cursor:pointer;transition:.2s}
+.info-chip:hover{color:var(--txt);border-color:var(--green)}
+.field-label{display:block;font-size:.8rem;font-weight:600;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin:18px 0 8px}
+.dropzone{border:2px dashed rgba(37,211,102,.35);border-radius:16px;padding:22px;text-align:center;cursor:pointer;transition:.25s;background:rgba(37,211,102,.04)}
+.dropzone:hover,.dropzone.drag{border-color:var(--green);background:rgba(37,211,102,.09)}
+.dz-icon{font-size:1.9rem;margin-bottom:6px}
+.drop-hint p{font-size:.95rem}.drop-hint strong{color:var(--green)}
+.drop-hint span{display:block;color:var(--dim);font-size:.78rem;margin-top:4px}
+.preview img{max-height:220px;max-width:100%;border-radius:12px;border:1px solid var(--line);box-shadow:0 8px 24px rgba(0,0,0,.4)}
+.hidden{display:none!important}
+.phone-row{display:flex;align-items:center;gap:10px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;padding:0 16px;transition:.2s}
+.phone-row:focus-within{border-color:var(--green);box-shadow:0 0 0 3px rgba(37,211,102,.18)}
+.phone-prefix{color:var(--dim);font-weight:600}
+#numberInput{flex:1;background:transparent;border:0;outline:0;color:var(--txt);font-size:1.05rem;padding:14px 0;font-family:inherit;letter-spacing:.03em}
+#numberInput::placeholder{color:#5c6f64}
+.cta{width:100%;margin-top:22px;padding:15px;border:0;border-radius:14px;font-family:inherit;font-size:1rem;font-weight:700;color:#04170e;background:linear-gradient(135deg,var(--green),#1fb855);cursor:pointer;transition:.2s;box-shadow:0 10px 30px rgba(37,211,102,.3)}
+.cta:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 14px 36px rgba(37,211,102,.42)}
+.cta:disabled{opacity:.6;cursor:not-allowed}
+.cta.small{width:auto;margin-top:16px;padding:10px 26px;font-size:.9rem}
+.pairing{margin-top:22px;text-align:center;background:rgba(34,211,238,.07);border:1px solid rgba(34,211,238,.3);border-radius:16px;padding:18px}
+.pb-title{font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;color:var(--cyan);font-weight:700}
+.pairing-code{font-size:2rem;font-weight:800;letter-spacing:.35em;margin:10px 0;color:#a5f3fc;font-variant-numeric:tabular-nums}
+.pb-hint{font-size:.8rem;color:var(--dim);line-height:1.55}
+.monitor{margin-top:22px;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:16px;padding:18px}
+.mon-title{font-size:.78rem;text-transform:uppercase;letter-spacing:.1em;color:var(--dim);font-weight:700;margin-bottom:12px}
+.steps{list-style:none;display:flex;flex-direction:column;gap:9px}
+.steps li{display:flex;align-items:center;gap:10px;font-size:.88rem;color:#5c6f64;transition:.3s}
+.steps li .dot{width:10px;height:10px;border-radius:50%;background:#2e3d36;flex-shrink:0;transition:.3s}
+.steps li.active{color:var(--txt);font-weight:600}
+.steps li.active .dot{background:var(--cyan);box-shadow:0 0 0 4px rgba(34,211,238,.18);animation:pulse 1.4s infinite}
+.steps li.done{color:var(--green)}
+.steps li.done .dot{background:var(--green)}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 4px rgba(34,211,238,.18)}50%{box-shadow:0 0 0 8px rgba(34,211,238,.06)}}
+.status-msg{margin-top:14px;font-size:.82rem;color:var(--dim);border-top:1px dashed var(--line);padding-top:10px}
+.result{margin-top:16px;text-align:center;font-size:.9rem;min-height:1.2em}
+.result .err{color:var(--red)}
+footer{color:var(--dim);font-size:.8rem}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;z-index:50;padding:20px}
+.modal-box{background:#0f1a15;border:1px solid var(--line);border-radius:20px;padding:26px;max-width:440px;width:100%}
+.modal-box h2{color:var(--green);font-size:1.1rem;margin-bottom:14px}
+.modal-box ul{list-style:none;display:flex;flex-direction:column;gap:10px}
+.modal-box li{font-size:.86rem;color:#c4d6cb;line-height:1.5;padding-left:18px;position:relative}
+.modal-box li::before{content:"•";position:absolute;left:2px;color:var(--green)}
