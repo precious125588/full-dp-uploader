@@ -10,7 +10,6 @@
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "npm:@itsliaaa/baileys@latest",
     "express": "^5.1.0",
-    "jimp": "^0.16.13",
     "multer": "^2.0.2",
     "pino": "^9.5.0",
     "sharp": "^0.33.5"
