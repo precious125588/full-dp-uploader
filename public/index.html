@@ -51,6 +51,15 @@
         </div>
       </div>
 
+      <div class="image-url-group" id="imageUrlGroup">
+        <label for="imageUrlInput">Or use an image URL</label>
+        <div class="image-url-row">
+          <input type="url" id="imageUrlInput" placeholder="https://example.com/photo.jpg" inputmode="url" autocomplete="url">
+          <button type="button" class="btn-secondary" id="loadImageUrlBtn">Load image</button>
+        </div>
+        <p class="input-hint">Use a public HTTPS image link that allows browser access (CORS).</p>
+      </div>
+
       <!-- Preview Container with Image Details -->
       <div class="preview-container hidden" id="previewContainer">
         <div class="preview-card">

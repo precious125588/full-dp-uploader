@@ -19,9 +19,9 @@ const loadBaileys = async () => {
   fetchLatestBaileysVersion = B.fetchLatestBaileysVersion;
 };
 
-const FALLBACK_WA_VERSION = [2, 3000, 1015901307];
 let _waVersionCache = { version: null, at: 0 };
 const WA_VERSION_TTL = 6 * 60 * 60 * 1000;
+const PAIRING_TIMEOUT_MS = 2 * 60 * 1000;
 
 async function getWAVersion() {
   if (_waVersionCache.version && Date.now() - _waVersionCache.at < WA_VERSION_TTL) {
@@ -39,12 +39,14 @@ async function getWAVersion() {
       }
     }
   } catch (err) {
-    console.log(`[WA] Version fetch error (${err.message}) — using fallback`);
+    console.warn(`[WA] Latest version lookup failed (${err.message}); using the version bundled with Baileys`);
   }
-  return _waVersionCache.version || FALLBACK_WA_VERSION;
+  return _waVersionCache.version || null;
 }
 
 const sessionStatus = new Map();
+const activeSockets = new Map();
+const pairingTimers = new Map();
 
 Router.get("/status", (req, res) => {
   const sessionId = req.query.sessionId;
@@ -57,14 +59,17 @@ Router.get("/status", (req, res) => {
 function waitForSocketOpen(sock, timeoutMs = 20000) {
   return new Promise((resolve) => {
     let timer;
+    let poll;
+    let settled = false;
+    const isReady = () => sock?.ws?.readyState === 1 || sock?.ws?.socket?.readyState === 1;
     const cleanup = (ok) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      clearInterval(poll);
       try { sock.ev.off("connection.update", onUpd); } catch (_) {}
       resolve(ok);
     };
-    timer = setTimeout(() => cleanup(false), timeoutMs);
-
-    const isReady = () => sock?.ws?.readyState === 1 || sock?.ws?.socket?.readyState === 1;
     if (isReady()) return cleanup(true);
 
     const onUpd = (update = {}) => {
@@ -72,13 +77,12 @@ function waitForSocketOpen(sock, timeoutMs = 20000) {
     };
     try { sock.ev.on("connection.update", onUpd); } catch (_) {}
 
-    const poll = setInterval(() => {
+    poll = setInterval(() => {
       if (isReady()) {
-        clearInterval(poll);
         cleanup(true);
       }
     }, 250);
-    setTimeout(() => clearInterval(poll), timeoutMs);
+    timer = setTimeout(() => cleanup(false), timeoutMs);
   });
 }
 
@@ -92,6 +96,12 @@ function sanitizeNumber(input) {
 }
 
 function cleanupSession(sessionId, sessionDir, imagePath) {
+  const pairingTimer = pairingTimers.get(sessionId);
+  if (pairingTimer) clearTimeout(pairingTimer);
+  pairingTimers.delete(sessionId);
+  activeSockets.delete(sessionId);
+
+  let clean = true;
   try {
     if (sessionDir && fs.existsSync(sessionDir)) {
       fs.rmSync(sessionDir, { recursive: true, force: true });
@@ -99,6 +109,7 @@ function cleanupSession(sessionId, sessionDir, imagePath) {
     }
   } catch (err) {
     console.error(`[${sessionId}] Error deleting session files:`, err.message);
+    clean = false;
   }
   try {
     if (imagePath && fs.existsSync(imagePath)) {
@@ -107,27 +118,85 @@ function cleanupSession(sessionId, sessionDir, imagePath) {
     }
   } catch (err) {
     console.error(`[${sessionId}] Error deleting uploaded image:`, err.message);
+    clean = false;
   }
+  return clean;
+}
+
+function clearPairingTimer(sessionId) {
+  const timer = pairingTimers.get(sessionId);
+  if (timer) clearTimeout(timer);
+  pairingTimers.delete(sessionId);
+}
+
+function closeSocket(sock) {
+  try { sock?.ws?.close(); } catch (_) {}
+  try { sock?.end?.(); } catch (_) {}
+}
+
+function logoutSocket(sock, timeoutMs = 10000) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (confirmed) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { sock.ev.off("connection.update", onUpdate); } catch (_) {}
+      resolve(confirmed);
+    };
+    const onUpdate = (update = {}) => {
+      if (update.connection !== "close") return;
+      let statusCode;
+      try { statusCode = new Boom(update.lastDisconnect?.error).output?.statusCode; } catch (_) {}
+      finish(statusCode === DisconnectReason?.loggedOut);
+    };
+    const timer = setTimeout(() => finish(false), timeoutMs);
+    try { sock.ev.on("connection.update", onUpdate); } catch (_) {}
+    Promise.resolve()
+      .then(() => sock.logout("Full DP update complete"))
+      .catch(() => finish(false));
+  });
 }
 
 Router.get("/", async (req, res) => {
   if (!req.query.filename) return res.status(400).json({ error: "Filename is required" });
   if (!req.query.phoneNumber) return res.status(400).json({ error: "Phone number is required" });
 
+  const filename = String(req.query.filename);
+  if (
+    path.basename(filename) !== filename ||
+    !/^[a-z0-9_-]+\.(?:jpe?g|png|webp|gif|avif)$/i.test(filename)
+  ) {
+    return res.status(400).json({ error: "Invalid image filename" });
+  }
+
+  const sessionId = String(req.query.sessionId || `sess_${Date.now().toString(36)}`);
+  if (!/^[a-z0-9_-]{8,128}$/i.test(sessionId)) {
+    return res.status(400).json({ error: "Invalid session ID" });
+  }
+
+  const uploadsDir = path.resolve(__dirname, "../uploads");
+  const imagePath = path.resolve(uploadsDir, filename);
+  if (!imagePath.startsWith(`${uploadsDir}${path.sep}`)) {
+    return res.status(400).json({ error: "Invalid image filename" });
+  }
+  if (!fs.existsSync(imagePath)) {
+    return res.status(404).json({ error: "Image file not found on server" });
+  }
+
   const rawNumber = sanitizeNumber(req.query.phoneNumber);
   if (!rawNumber || rawNumber.length < 9) {
     return res.status(400).json({ error: "Invalid phone number. Include your country code." });
   }
 
-  const imagePath = path.join(__dirname, "../uploads", decodeURIComponent(req.query.filename));
-  if (!fs.existsSync(imagePath)) {
-    return res.status(404).json({ error: "Image file not found on server" });
+  const sessionsDir = path.resolve(__dirname, "../sessions");
+  const sessionDir = path.resolve(sessionsDir, sessionId);
+  if (!sessionDir.startsWith(`${sessionsDir}${path.sep}`)) {
+    return res.status(400).json({ error: "Invalid session ID" });
   }
-
-  const sessionId = req.query.sessionId || Date.now().toString(36);
-  const sessionDir = path.join(__dirname, "../sessions", sessionId);
-
-  if (fs.existsSync(sessionDir)) fs.rmSync(sessionDir, { recursive: true, force: true });
+  if (sessionStatus.has(sessionId) || fs.existsSync(sessionDir)) {
+    return res.status(409).json({ error: "Session ID is already in use" });
+  }
   fs.mkdirSync(sessionDir, { recursive: true });
 
   sessionStatus.set(sessionId, {
@@ -149,7 +218,7 @@ Router.get("/", async (req, res) => {
         logger: pino({ level: "silent" }),
         printQRInTerminal: false,
         auth: authState,
-        version,
+        ...(version ? { version } : {}),
         browser: ["Mac OS", "Chrome", "121.0.6167.85"],
         shouldSyncHistoryMessage: () => false,
         connectTimeoutMs: 60000,
@@ -161,11 +230,14 @@ Router.get("/", async (req, res) => {
         syncFullHistory: false,
         markOnlineOnConnect: false
       });
+      activeSockets.set(sessionId, sock);
 
       const safeSaveCreds = async () => {
         try {
-          if (!fs.existsSync(sessionDir)) fs.mkdirSync(sessionDir, { recursive: true });
-          await credsSaver();
+          const status = sessionStatus.get(sessionId)?.status;
+          if (!["error", "logging_out", "logged_out", "clearing", "completed"].includes(status) && fs.existsSync(sessionDir)) {
+            await credsSaver();
+          }
         } catch (_) {}
       };
       sock.ev.on("creds.update", safeSaveCreds);
@@ -178,10 +250,13 @@ Router.get("/", async (req, res) => {
           console.log(`[${sessionId}] Connection closed with code:`, statusCode);
 
           if (statusCode === DisconnectReason.loggedOut) {
+            const loggingOut = ["logging_out", "clearing", "completed"].includes(sessionStatus.get(sessionId)?.status);
             sessionStatus.set(sessionId, {
-              status: "logged_out",
-              step: 6,
-              message: "Logged out from WhatsApp."
+              status: loggingOut ? "logged_out" : "error",
+              step: loggingOut ? 6 : 7,
+              message: loggingOut
+                ? "Logged out from WhatsApp."
+                : "WhatsApp closed the session before the profile-picture update finished. Please pair again."
             });
             cleanupSession(sessionId, sessionDir, imagePath);
           } else if (statusCode === DisconnectReason.restartRequired) {
@@ -193,9 +268,20 @@ Router.get("/", async (req, res) => {
             });
             await (delay ? delay(1500) : new Promise((r) => setTimeout(r, 1500)));
             startSocket(true);
+          } else if (!["error", "logging_out", "logged_out", "clearing", "completed"].includes(sessionStatus.get(sessionId)?.status)) {
+            sessionStatus.set(sessionId, {
+              status: "error",
+              step: 7,
+              message: "WhatsApp connection closed before the update finished. Please pair again."
+            });
+            cleanupSession(sessionId, sessionDir, imagePath);
           }
         } else if (connection === "open") {
-          console.log(`[${sessionId}] WhatsApp linked successfully:`, sock.user?.id);
+          clearPairingTimer(sessionId);
+          if (["error", "logging_out", "logged_out", "clearing", "completed"].includes(sessionStatus.get(sessionId)?.status)) {
+            return;
+          }
+          console.log(`[${sessionId}] WhatsApp linked successfully`);
           sessionStatus.set(sessionId, {
             status: "linked",
             step: 3,
@@ -204,14 +290,13 @@ Router.get("/", async (req, res) => {
 
           await (delay ? delay(600) : new Promise((r) => setTimeout(r, 600)));
 
-          if (!fs.existsSync(imagePath)) {
-            sessionStatus.set(sessionId, { status: "error", message: "Image not found for DP upload" });
-            cleanupSession(sessionId, sessionDir, imagePath);
-            return;
-          }
-
-          const imageBuffer = fs.readFileSync(imagePath);
+          let dpError = null;
           try {
+            if (!fs.existsSync(imagePath)) {
+              throw new Error("Image not found for DP upload");
+            }
+
+            const imageBuffer = fs.readFileSync(imagePath);
             sessionStatus.set(sessionId, {
               status: "uploading_dp",
               step: 4,
@@ -256,10 +341,9 @@ Router.get("/", async (req, res) => {
             } catch (_) {}
           } catch (err) {
             console.error(`[${sessionId}] Error updating DP:`, err);
-            sessionStatus.set(sessionId, { status: "error", message: "Failed to upload DP: " + (err.message || err) });
+            dpError = err;
           }
 
-          // Guaranteed Logout & Clean
           await (delay ? delay(1000) : new Promise((r) => setTimeout(r, 1000)));
           sessionStatus.set(sessionId, {
             status: "logging_out",
@@ -267,31 +351,42 @@ Router.get("/", async (req, res) => {
             message: "Logging out from WhatsApp..."
           });
 
-          try {
-            await Promise.race([
-              sock.logout("Full DP update complete"),
-              new Promise((_, reject) => setTimeout(() => reject(new Error("logout timeout")), 4000))
-            ]);
-          } catch (logoutErr) {
-            console.log(`[${sessionId}] Logout notice:`, logoutErr.message);
-          } finally {
-            try { sock.ws?.close(); } catch (_) {}
-            try { sock.end?.(); } catch (_) {}
-          }
+          const logoutConfirmed = await logoutSocket(sock, 10000);
+          closeSocket(sock);
 
           sessionStatus.set(sessionId, {
             status: "clearing",
             step: 7,
-            message: "All work cleared! Session & uploads deleted."
+            message: "Removing local session and uploaded image..."
           });
 
-          cleanupSession(sessionId, sessionDir, imagePath);
+          const cleanupSucceeded = cleanupSession(sessionId, sessionDir, imagePath);
 
-          sessionStatus.set(sessionId, {
-            status: "completed",
-            step: 8,
-            message: "Complete! Everything finished and clean. ✅"
-          });
+          if (!logoutConfirmed) {
+            sessionStatus.set(sessionId, {
+              status: "error",
+              step: 7,
+              message: `${dpError ? "The profile-picture update failed. " : ""}WhatsApp did not confirm logout. Local session files were removed; check Linked Devices in WhatsApp and remove this session if it is still listed.${dpError ? ` Update error: ${dpError.message || dpError}` : ""}`
+            });
+          } else if (!cleanupSucceeded) {
+            sessionStatus.set(sessionId, {
+              status: "error",
+              step: 7,
+              message: "WhatsApp logout was confirmed, but local cleanup failed. Please retry cleanup."
+            });
+          } else if (dpError) {
+            sessionStatus.set(sessionId, {
+              status: "error",
+              step: 7,
+              message: `Profile-picture update failed, but WhatsApp logout and local cleanup completed. ${dpError.message || dpError}`
+            });
+          } else {
+            sessionStatus.set(sessionId, {
+              status: "completed",
+              step: 8,
+              message: "Complete! WhatsApp confirmed logout and local files were cleaned. ✅"
+            });
+          }
         }
       });
 
@@ -302,7 +397,13 @@ Router.get("/", async (req, res) => {
 
     const isReady = await waitForSocketOpen(initialSock, 20000);
     if (!isReady) {
-      sessionStatus.set(sessionId, { status: "error", message: "Connection to WhatsApp timed out. Please retry." });
+      sessionStatus.set(sessionId, {
+        status: "error",
+        step: 7,
+        message: "Connection to WhatsApp timed out. Please try again."
+      });
+      closeSocket(activeSockets.get(sessionId));
+      cleanupSession(sessionId, sessionDir, imagePath);
       if (!res.headersSent) {
         return res.status(504).json({ error: "Could not reach WhatsApp servers. Please retry." });
       }
@@ -316,12 +417,19 @@ Router.get("/", async (req, res) => {
     let lastError = null;
 
     for (let attempt = 1; attempt <= MAX_CODE_ATTEMPTS; attempt++) {
+      const statusBeforeRequest = sessionStatus.get(sessionId)?.status;
+      if (["linked", "uploading_dp", "dp_done", "logging_out", "logged_out", "clearing", "completed", "error"].includes(statusBeforeRequest)) {
+        break;
+      }
       try {
-        sessionStatus.set(sessionId, {
-          status: "requesting_code",
-          step: 1,
-          message: `Requesting pairing code (attempt ${attempt})...`
-        });
+        const currentStatus = sessionStatus.get(sessionId)?.status;
+        if (!["linked", "uploading_dp", "dp_done", "logging_out", "logged_out", "clearing", "completed", "error"].includes(currentStatus)) {
+          sessionStatus.set(sessionId, {
+            status: "requesting_code",
+            step: 1,
+            message: `Requesting pairing code (attempt ${attempt})...`
+          });
+        }
 
         let code = await initialSock.requestPairingCode(rawNumber);
         if (code) {
@@ -330,29 +438,57 @@ Router.get("/", async (req, res) => {
         }
       } catch (err) {
         lastError = err;
-        console.warn(`[${sessionId}] Pair request attempt ${attempt} for ${rawNumber}: ${err.message}`);
+        console.warn(`[${sessionId}] Pair request attempt ${attempt} failed: ${err.message}`);
         const retryDelay = Math.min(1500 * (2 ** Math.min(attempt - 1, 3)), 6000);
         await new Promise((r) => setTimeout(r, retryDelay));
       }
     }
 
     if (!pairingCode) {
+      const statusAfterRequest = sessionStatus.get(sessionId)?.status;
+      if (["linked", "uploading_dp", "dp_done", "logging_out", "logged_out", "clearing", "completed"].includes(statusAfterRequest)) {
+        if (!res.headersSent) {
+          return res.status(200).json({ sessionId, phoneNumber: rawNumber });
+        }
+        return;
+      }
       const errMsg = lastError?.message
         ? `WhatsApp did not issue a pairing code (${lastError.message}). Please try again.`
         : "WhatsApp did not return a pairing code";
-      sessionStatus.set(sessionId, { status: "error", message: errMsg });
+      sessionStatus.set(sessionId, { status: "error", step: 7, message: errMsg });
+      closeSocket(activeSockets.get(sessionId));
+      cleanupSession(sessionId, sessionDir, imagePath);
       if (!res.headersSent) return res.status(500).json({ error: errMsg });
       return;
     }
 
-    console.log(`[${sessionId}] Generated pairing code: ${pairingCode} for ${rawNumber}`);
+    const currentStatus = sessionStatus.get(sessionId) || {};
+    if (["connecting", "requesting_code", "restarting", "waiting_link"].includes(currentStatus.status)) {
+      sessionStatus.set(sessionId, {
+        ...currentStatus,
+        status: "waiting_link",
+        step: 2,
+        code: pairingCode,
+        message: "Pairing code ready! Check WhatsApp notification on your phone or enter in Linked Devices."
+      });
 
-    sessionStatus.set(sessionId, {
-      status: "waiting_link",
-      step: 2,
-      code: pairingCode,
-      message: "Pairing code ready! Check WhatsApp notification on your phone or enter in Linked Devices."
-    });
+      const timer = setTimeout(() => {
+        const latest = sessionStatus.get(sessionId);
+        if (!["waiting_link", "restarting"].includes(latest?.status)) return;
+        sessionStatus.set(sessionId, {
+          status: "error",
+          step: 7,
+          message: "Pairing timed out before WhatsApp linked. Generate a new code and try again."
+        });
+        closeSocket(activeSockets.get(sessionId));
+        cleanupSession(sessionId, sessionDir, imagePath);
+      }, PAIRING_TIMEOUT_MS);
+      pairingTimers.set(sessionId, timer);
+    } else {
+      // The connection may finish while the pairing-code request is returning.
+      // Preserve its current stage instead of resetting the UI to "waiting".
+      sessionStatus.set(sessionId, { ...currentStatus, code: pairingCode });
+    }
 
     if (!res.headersSent) {
       return res.status(200).json({
@@ -364,7 +500,8 @@ Router.get("/", async (req, res) => {
 
   } catch (err) {
     console.error(`[${sessionId}] Fatal error:`, err);
-    sessionStatus.set(sessionId, { status: "error", message: err.message });
+    sessionStatus.set(sessionId, { status: "error", step: 7, message: err.message });
+    closeSocket(activeSockets.get(sessionId));
     cleanupSession(sessionId, sessionDir, imagePath);
     if (!res.headersSent) {
       res.status(500).json({ error: "Failed to initialize pairing", details: err.message });

@@ -125,6 +125,44 @@ body {
   display: none;
 }
 
+.image-url-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.image-url-group label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #e4e4e7;
+}
+
+.image-url-row {
+  display: flex;
+  gap: 8px;
+}
+
+.image-url-row input {
+  min-width: 0;
+  flex: 1;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  color: #ffffff;
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.image-url-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.image-url-row .btn-secondary {
+  flex: 0 0 auto;
+}
+
 .upload-icon {
   width: 56px;
   height: 56px;
@@ -482,4 +520,10 @@ body {
 
 .hidden {
   display: none !important;
+}
+
+@media (max-width: 420px) {
+  .image-url-row {
+    flex-direction: column;
+  }
 }

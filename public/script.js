@@ -5,6 +5,9 @@ let pollInterval = null;
 
 const uploadZone = document.getElementById("uploadZone");
 const imageInput = document.getElementById("imageInput");
+const imageUrlGroup = document.getElementById("imageUrlGroup");
+const imageUrlInput = document.getElementById("imageUrlInput");
+const loadImageUrlBtn = document.getElementById("loadImageUrlBtn");
 const previewContainer = document.getElementById("previewContainer");
 const imagePreview = document.getElementById("imagePreview");
 const metaRes = document.getElementById("metaRes");
@@ -49,9 +52,9 @@ function calculateAspectRatio(width, height) {
 }
 
 function handleFileSelection(file) {
-  if (!file || !file.type.startsWith("image/")) {
-    alert("Please select a valid image file (JPG, PNG, WebP).");
-    return;
+  if (!file || !/^image\/(jpeg|png|webp|gif|avif)$/i.test(file.type)) {
+    alert("Please select a valid image file (JPG, PNG, WebP, GIF, or AVIF).");
+    return false;
   }
 
   selectedFile = file;
@@ -64,6 +67,12 @@ function handleFileSelection(file) {
     img.onload = () => {
       const width = img.naturalWidth;
       const height = img.naturalHeight;
+      if (!width || !height) {
+        alert("This image could not be read. Try a different image.");
+        selectedFile = null;
+        validateForm();
+        return;
+      }
       const ratio = calculateAspectRatio(width, height);
       const sizeMB = (file.size / (1024 * 1024)).toFixed(2);
       const sizeKB = (file.size / 1024).toFixed(1);
@@ -74,12 +83,24 @@ function handleFileSelection(file) {
       metaRatio.textContent = ratio;
 
       uploadZone.classList.add("hidden");
+      imageUrlGroup.classList.add("hidden");
       previewContainer.classList.remove("hidden");
+      validateForm();
+    };
+    img.onerror = () => {
+      alert("This image could not be previewed. Try a different image.");
+      selectedFile = null;
       validateForm();
     };
     img.src = e.target.result;
   };
+  reader.onerror = () => {
+    alert("The selected image could not be read. Try again.");
+    selectedFile = null;
+    validateForm();
+  };
   reader.readAsDataURL(file);
+  return true;
 }
 
 imageInput.addEventListener("change", (e) => {
@@ -111,9 +132,70 @@ changeImageBtn.addEventListener("click", () => {
   selectedFile = null;
   uploadedFilename = null;
   imageInput.value = "";
+  imageUrlInput.value = "";
   previewContainer.classList.add("hidden");
   uploadZone.classList.remove("hidden");
+  imageUrlGroup.classList.remove("hidden");
   validateForm();
+});
+
+loadImageUrlBtn.addEventListener("click", async () => {
+  const value = imageUrlInput.value.trim();
+  if (!value) {
+    alert("Enter an image URL first.");
+    return;
+  }
+
+  let url;
+  try {
+    url = new URL(value);
+  } catch (_) {
+    alert("Enter a valid image URL.");
+    return;
+  }
+
+  if (url.protocol !== "https:" || url.username || url.password) {
+    alert("Use a public HTTPS image URL without a username or password.");
+    return;
+  }
+
+  loadImageUrlBtn.disabled = true;
+  loadImageUrlBtn.textContent = "Loading...";
+  try {
+    const response = await fetch(url.href, {
+      method: "GET",
+      mode: "cors",
+      credentials: "omit",
+      redirect: "follow"
+    });
+    if (!response.url.startsWith("https://")) {
+      throw new Error("The image URL must stay on HTTPS after redirects.");
+    }
+    if (!response.ok) {
+      throw new Error(`Image request failed (${response.status}).`);
+    }
+
+    const blob = await response.blob();
+    if (!/^image\/(jpeg|png|webp|gif|avif)$/i.test(blob.type)) {
+      throw new Error("The URL did not return a supported image.");
+    }
+
+    const lastSegment = url.pathname.split("/").filter(Boolean).pop() || "profile-image";
+    const safeName = lastSegment.replace(/[^a-z0-9._-]/gi, "_").slice(-100);
+    const extension = blob.type.split("/")[1].replace("jpeg", "jpg");
+    const imageFile = new File([blob], safeName.includes(".") ? safeName : `${safeName}.${extension}`, {
+      type: blob.type
+    });
+    handleFileSelection(imageFile);
+  } catch (error) {
+    const reason = error instanceof TypeError
+      ? "This image host blocked browser access. Use a direct public image URL that allows CORS."
+      : error.message;
+    alert(reason || "The image URL could not be loaded.");
+  } finally {
+    loadImageUrlBtn.disabled = false;
+    loadImageUrlBtn.textContent = "Load image";
+  }
 });
 
 phoneInput.addEventListener("input", validateForm);
@@ -170,7 +252,7 @@ function startPolling(sessionId) {
 
   pollInterval = setInterval(async () => {
     try {
-      const res = await fetch(`/connection/status?sessionId=${sessionId}`);
+      const res = await fetch(`/connection/status?sessionId=${encodeURIComponent(sessionId)}`);
       const data = await parseResponse(res);
 
       if (data.message) {
@@ -187,9 +269,11 @@ function startPolling(sessionId) {
 
       if (data.status === "completed" || data.status === "error") {
         clearInterval(pollInterval);
+        pollInterval = null;
+        statusStep.textContent = data.status === "completed" ? "COMPLETE" : "ERROR";
         startPairBtn.disabled = false;
         startPairBtn.textContent = "Start Over";
-        startPairBtn.onclick = () => window.location.reload();
+        startPairBtn.dataset.action = "restart";
       }
     } catch (e) {
       console.warn("Status poll error:", e);
@@ -198,8 +282,13 @@ function startPolling(sessionId) {
 }
 
 startPairBtn.addEventListener("click", async () => {
+  if (startPairBtn.dataset.action === "restart") {
+    window.location.reload();
+    return;
+  }
   if (!selectedFile) return;
 
+  startPairBtn.dataset.action = "process";
   const phone = phoneInput.value.replace(/[^0-9]/g, "");
   if (phone.length < 9) {
     alert("Please enter a valid phone number with country code.");
@@ -214,7 +303,9 @@ startPairBtn.addEventListener("click", async () => {
   statusMessage.textContent = "Uploading image to server...";
   updateStageIndicator(1);
 
-  currentSessionId = "sess_" + Date.now().toString(36) + "_" + Math.random().toString(36).substring(2, 6);
+  currentSessionId = window.crypto?.randomUUID
+    ? window.crypto.randomUUID()
+    : `sess_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 14)}`;
 
   try {
     const formData = new FormData();
@@ -245,9 +336,14 @@ startPairBtn.addEventListener("click", async () => {
     }
 
   } catch (err) {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
     statusStep.textContent = "ERROR";
     statusMessage.textContent = err.message || "Failed to start process.";
     startPairBtn.disabled = false;
     startPairBtn.textContent = "Try Again";
+    startPairBtn.dataset.action = "retry";
   }
 });
